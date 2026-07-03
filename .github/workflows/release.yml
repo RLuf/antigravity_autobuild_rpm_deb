@@ -1,0 +1,48 @@
+name: Autobuild RPM and DEB
+
+on:
+  schedule:
+    # Run everyday at midnight
+    - cron: '0 0 * * *'
+  workflow_dispatch: # Allow manual trigger
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y rpm dpkg-dev python3 python3-pip python3-venv
+
+      - name: Setup Python environment
+        run: |
+          python3 -m venv .venv
+          source .venv/bin/activate
+          pip install -r requirements.txt
+
+      - name: Run Antigravity Autobuilder
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          source .venv/bin/activate
+          chmod +x antigravity_rpm_builder.py
+          ./antigravity_rpm_builder.py
+
+      - name: Prepare Artifacts
+        run: |
+          mkdir -p release_artifacts
+          find ~/rpmbuild/RPMS -name "*.rpm" -exec cp {} release_artifacts/ \;
+          find ~/debbuild -name "*.deb" -exec cp {} release_artifacts/ \;
+
+      - name: Release
+        uses: softprops/action-gh-release@v2
+        if: success()
+        with:
+          tag_name: "v2.0.0-${{ github.run_number }}"
+          name: "Antigravity Autobuild Release v2.0.0-${{ github.run_number }}"
+          prerelease: true
+          files: release_artifacts/*
